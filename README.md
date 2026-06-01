@@ -311,13 +311,8 @@ This package is not yet registered in the General registry. Install it
 directly from GitHub:
 
 ```julia
-pkg> add https://github.com/WooJoongKim0107/PropertyArrays.jl
-```
-
-Or, for local development:
-
-```julia
-pkg> dev /path/to/PropertyArrays.jl
+import Pkg
+Pkg.add(url="https://github.com/WooJoongKim0107/PropertyArrays.jl.git")
 ```
 
 ---

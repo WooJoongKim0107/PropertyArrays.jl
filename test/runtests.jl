@@ -85,6 +85,24 @@ end
     @test selected.radius.data == [sqrt(17), sqrt(20), sqrt(26), sqrt(29)]
 end
 
+@testset "PArray conversion" begin
+    matrix = [1 2; 3 4]
+    wrapped_matrix = PArray(matrix)
+    converted_matrix = convert(Union{Int, Matrix{Int}}, wrapped_matrix)
+
+    @test converted_matrix isa Matrix{Int}
+    @test converted_matrix == matrix
+    @test converted_matrix !== matrix
+
+    wrapped_reshaped = PArray(reshape(1:4, 2, 2))
+    converted_reshaped = convert(Union{Int, Matrix{Int}}, wrapped_reshaped)
+
+    @test converted_reshaped isa Matrix{Int}
+    @test converted_reshaped == Matrix(wrapped_reshaped)
+    @test convert(Matrix{Int}, wrapped_matrix) isa Matrix{Int}
+    @test_throws MethodError convert(Union{Int, Vector{Int}}, wrapped_matrix)
+end
+
 @testset "Constructors and mutation" begin
     particles = PArray(TestParticle, 2, 1)
     particles[1, 1] = TestParticle(3.0, 4.0)

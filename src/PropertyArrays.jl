@@ -258,6 +258,8 @@ Base.size(A::PropertyArray) = size(getfield(A, :data))
 Base.axes(A::PropertyArray) = axes(getfield(A, :data))
 Base.IndexStyle(::Type{PropertyArray{T, N, A}}) where {T, N, A} = IndexStyle(A)
 Base.similar(A::PropertyArray, ::Type{T}, dims::Dims) where {T} = PropertyArray(similar(getfield(A, :data), T, dims))
+# Defensive interop for APIs that convert through unions like Union{T, Matrix{T}}.
+Base.convert(::Type{Union{T, Array{T, N}}}, A::PropertyArray{T, N}) where {T, N} = Array(A)
 Base.view(A::PropertyArray, I...) = PropertyArray(view(getfield(A, :data), to_indices(A, I)...))
 @inline Base.setindex!(A::PropertyArray, v, I...) = setindex!(getfield(A, :data), v, to_indices(A, I)...)
 

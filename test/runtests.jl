@@ -18,6 +18,13 @@ using Test
 @test PArray === PropertyArray
 @test PObject === PropertyObject
 
+struct TestRGBA{T}
+    r::T
+    g::T
+    b::T
+    a::T
+end
+
 struct TestParticle <: PObject
     x::Float64
     y::Float64
@@ -101,6 +108,21 @@ end
     @test converted_reshaped == Matrix(wrapped_reshaped)
     @test convert(Matrix{Int}, wrapped_matrix) isa Matrix{Int}
     @test_throws MethodError convert(Union{Int, Vector{Int}}, wrapped_matrix)
+
+    function makie_like_numbers_to_colors(numbers::Union{AbstractArray{<:Number, N}, Number})::Union{Array{TestRGBA{Float32}, N}, TestRGBA{Float32}} where {N}
+        return map(numbers) do number
+            gray = Float32(number)
+            TestRGBA(gray, gray, gray, 1.0f0)
+        end
+    end
+
+    colors = makie_like_numbers_to_colors(PArray(Float64[0.0 0.5; 0.75 1.0]))
+
+    @test colors isa Matrix{TestRGBA{Float32}}
+    @test colors == [
+        TestRGBA(0.0f0, 0.0f0, 0.0f0, 1.0f0) TestRGBA(0.5f0, 0.5f0, 0.5f0, 1.0f0)
+        TestRGBA(0.75f0, 0.75f0, 0.75f0, 1.0f0) TestRGBA(1.0f0, 1.0f0, 1.0f0, 1.0f0)
+    ]
 end
 
 @testset "Constructors and mutation" begin

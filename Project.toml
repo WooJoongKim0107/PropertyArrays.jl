@@ -1,7 +1,7 @@
 name = "PropertyArrays"
 uuid = "de04e2eb-689e-4d1a-abcd-f11479f6170a"
 authors = ["WooJoongKim0107 <henrikwjkim@gmail.com>"]
-version = "0.1.1"
+version = "0.1.2"
 
 [deps]
 Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"

@@ -1,5 +1,5 @@
 module PropertyArrays
-export PropertyObject, PObject, register, @register, @register_fn, PropertyArray, PArray, translate, psave, pload
+export PropertyObject, PObject, register, @register, @register_fn, @delegate, PropertyArray, PArray, translate, psave, pload
 
 using JLD2: save_object, load_object
 
@@ -262,6 +262,123 @@ See [`@register`](@ref) for the combined define-and-register form.
 macro register_fn(fname, Tname)
     fname isa Symbol || error("@register_fn: first argument must be a plain function name")
     return _register_attr_method(fname, Tname, :x, :($(esc(fname))(x)); escape_body = false)
+end
+
+function _delegate_field_symbol(field)
+    if field isa Symbol
+        return field
+    elseif field isa QuoteNode && field.value isa Symbol
+        return field.value
+    else
+        error("@delegate: field name must be a plain identifier, e.g. `particle`")
+    end
+end
+
+function _delegate_prop_symbol(prop)
+    if prop isa QuoteNode && prop.value isa Symbol
+        return prop.value
+    else
+        error("@delegate: delegated properties must be quoted Symbols, e.g. `:speed`")
+    end
+end
+
+function _delegate_prop_symbols(props)
+    if props isa QuoteNode && props.value isa Symbol
+        return Symbol[props.value]
+    elseif props isa Expr && props.head === :tuple
+        isempty(props.args) && error("@delegate: property tuple must contain at least one property")
+        return [_delegate_prop_symbol(prop) for prop in props.args]
+    else
+        error("@delegate: properties must be a quoted Symbol or tuple of quoted Symbols, e.g. `:speed` or `(:speed, :mass)`")
+    end
+end
+
+function _delegate_pair(entry)
+    if entry isa Expr && entry.head === :call && length(entry.args) == 3 && entry.args[1] === :(=>)
+        return _delegate_field_symbol(entry.args[2]), _delegate_prop_symbols(entry.args[3])
+    else
+        error("@delegate block entries must look like `field => (:prop, ...)`")
+    end
+end
+
+function _delegate_entries(block)
+    if block isa Expr && block.head === :block
+        entries = Any[x for x in block.args if !(x isa LineNumberNode)]
+        isempty(entries) && error("@delegate block must contain at least one delegation entry")
+        return [_delegate_pair(entry) for entry in entries]
+    else
+        return [_delegate_pair(block)]
+    end
+end
+
+function _delegate_attr_method(Tname, field::Symbol, prop::Symbol)
+    return _register_attr_method(
+        prop,
+        Tname,
+        :x,
+        :($(GlobalRef(Base, :getproperty))($(GlobalRef(Core, :getfield))(x, $(QuoteNode(field))), $(QuoteNode(prop)))),
+        escape_body = false,
+    )
+end
+
+function _delegate_methods(Tname, entries)
+    seen = Set{Symbol}()
+    defs = Any[]
+    for (field, props) in entries
+        for prop in props
+            if prop in seen
+                error("@delegate: property :$prop is delegated more than once in the same @delegate expression")
+            end
+            push!(seen, prop)
+            push!(defs, _delegate_attr_method(Tname, field, prop))
+        end
+    end
+    return Expr(:block, defs...)
+end
+
+"""
+    @delegate T field :a
+    @delegate T field (:a, :b, ...)
+    @delegate T begin
+        field1 => (:a, :b, ...)
+        field2 => (:c, :d, ...)
+    end
+
+Delegate child properties from fields of a composed [`PropertyObject`](@ref)
+type. The expression `@delegate T field (:a, :b)` makes `x.a` and `x.b` on
+`x::T` forward to `x.field.a` and `x.field.b`.
+
+`@delegate` is intended for package code. Like [`@register`](@ref), it expands
+to ordinary method definitions and does not call [`register`](@ref), so it is
+safe to use during precompilation.
+
+Fields are accessed with `getfield`, while delegated properties are accessed
+with `getproperty`. This means the child property can be either a real field or
+a registered property.
+
+# Examples
+```julia
+struct Medium <: PObject
+    particle::Particle
+    solvent::Solvent
+end
+
+@delegate Medium particle (:speed, :mass, :charge)
+
+@delegate Medium begin
+    particle => (:speed, :mass, :charge)
+    solvent  => (:viscosity, :density)
+end
+```
+"""
+macro delegate(Tname, args...)
+    if length(args) == 1
+        return _delegate_methods(Tname, _delegate_entries(args[1]))
+    elseif length(args) == 2
+        return _delegate_methods(Tname, [(_delegate_field_symbol(args[1]), _delegate_prop_symbols(args[2]))])
+    else
+        error("@delegate expects `@delegate T field (:prop, ...)` or `@delegate T begin field => (:prop, ...) end`")
+    end
 end
 
 # ============================================================================

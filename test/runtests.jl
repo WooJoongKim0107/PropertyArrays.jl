@@ -3,7 +3,7 @@ Test coverage includes:
 
 - `PObject` field access, registered computed attributes, `hasproperty`,
   and missing-property errors.
-- `register` and `@register` attribute registration paths.
+- `register`, `@register`, and `@delegate` attribute registration paths.
 - `PArray` behavior: size, axes, indexing, slicing, property forwarding,
   `reshape`, `map`, and `filter`.
 - `PArray` constructors and mutation through `setindex!`.
@@ -42,6 +42,31 @@ end
     p.x^2 + p.y^2
 end
 
+struct TestSolvent <: PObject
+    viscosity::Float64
+    density::Float64
+end
+
+@register TestSolvent :kinematic s -> s.viscosity / s.density
+
+struct TestMedium <: PObject
+    particle::TestParticle
+    solvent::TestSolvent
+end
+
+@delegate TestMedium particle (:radius, :t)
+@delegate TestMedium solvent (:viscosity, :density, :kinematic)
+
+struct TestGroupedMedium <: PObject
+    particle::TestParticle
+    solvent::TestSolvent
+end
+
+@delegate TestGroupedMedium begin
+    particle => (:radius, :t)
+    solvent => (:viscosity, :density, :kinematic)
+end
+
 @testset "PObject attributes" begin
     p = TestParticle(3.0, 4.0)
 
@@ -59,6 +84,36 @@ end
     @test_throws ErrorException p.missing
     @test_throws ErrorException macroexpand(@__MODULE__, :(@register TestParticle t p -> p.x))
     @test_throws ErrorException macroexpand(@__MODULE__, :(@register TestParticle :typed_arg p::TestParticle -> p.x))
+end
+
+@testset "Delegated attributes" begin
+    p = TestParticle(3.0, 4.0)
+    s = TestSolvent(2.0, 8.0)
+    m = TestMedium(p, s)
+    gm = TestGroupedMedium(p, s)
+
+    @test m.radius == 5.0
+    @test m.t == 7.0
+    @test m.viscosity == 2.0
+    @test m.density == 8.0
+    @test m.kinematic == 0.25
+    @test gm.radius == 5.0
+    @test gm.kinematic == 0.25
+    @test hasproperty(m, :radius)
+    @test hasproperty(m, :viscosity)
+    @test !hasproperty(m, :speed)
+    @test_throws ErrorException m.speed
+
+    media = PArray([m, TestMedium(TestParticle(5.0, 12.0), TestSolvent(3.0, 6.0))])
+    @test media.radius.data == [5.0, 13.0]
+    @test media.kinematic.data == [0.25, 0.5]
+
+    @test_throws ErrorException macroexpand(@__MODULE__, :(@delegate TestMedium particle (radius,)))
+    @test_throws ErrorException macroexpand(@__MODULE__, :(@delegate TestMedium particle ()))
+    @test_throws ErrorException macroexpand(@__MODULE__, :(@delegate TestMedium begin
+        particle => (:radius,)
+        solvent => (:radius,)
+    end))
 end
 
 @testset "Dynamic registration" begin

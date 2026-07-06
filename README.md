@@ -144,6 +144,7 @@ have functions registered as accessible attributes.
 | Define a named function and register it in package code | `@register f(x::T) = ...` |
 | Register a property without defining a function of the same name | `@register T :name x -> ...` |
 | Register an existing named function in package code | `@register_fn f T` |
+| Delegate properties from a composed field in package code | `@delegate T field (:a, :b)` |
 | Register from runtime values in trusted REPL/script/notebook code | `register(f, T, name)` |
 
 Use the macro forms for static package code because they emit ordinary method
@@ -209,6 +210,36 @@ true
 > with precompilation. Use `@register` inside package code; use `register`
 > for interactive work or for cases where the registration is genuinely
 > dynamic.
+
+### Delegating Composed Properties
+
+Use `@delegate` when a `PObject` is composed from other objects and you want
+selected child properties to appear on the parent. It emits ordinary method
+definitions, so it is precompile-safe like `@register`.
+
+```julia
+struct Medium <: PObject
+    particle::Particle
+    solvent::Solvent
+end
+
+@delegate Medium particle (:speed, :mass, :charge)
+@delegate Medium solvent (:viscosity, :density)
+```
+
+Then `medium.speed` forwards to `medium.particle.speed`, and
+`medium.viscosity` forwards to `medium.solvent.viscosity`. Delegation uses
+`getfield` for the parent field and `getproperty` for the child property, so
+the child property can be either a real field or a registered attribute.
+
+For several fields, the grouped form keeps the composition map together:
+
+```julia
+@delegate Medium begin
+    particle => (:speed, :mass, :charge)
+    solvent  => (:viscosity, :density)
+end
+```
 
 ---
 
@@ -322,6 +353,7 @@ p  = translate(nt, Point)           # Point(1.0, 2.0)
 | `register`       | function    | register a function as an attribute    |
 | `@register`      | macro       | define and register in one step        |
 | `@register_fn`   | macro       | register an already-defined function   |
+| `@delegate`      | macro       | delegate attributes from composed fields |
 | `psave`          | function    | JLD2 serialization                     |
 | `pload`          | function    | JLD2 deserialization                   |
 | `translate`      | function    | struct <-> NamedTuple conversion       |

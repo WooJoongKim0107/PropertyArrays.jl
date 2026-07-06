@@ -150,6 +150,17 @@ end
 @register radius(p::Particle) = sqrt(p.x^2 + p.y^2)
 ```
 
+If you want the registered attribute without defining a function of the same
+name, use the anonymous attribute form:
+
+```julia
+@register Particle :t p -> p.x + p.y
+
+@register(Particle, :radius_sq) do p
+    p.x^2 + p.y^2
+end
+```
+
 ### In the REPL or Scripts
 
 Use `register` when working interactively or when the registration is

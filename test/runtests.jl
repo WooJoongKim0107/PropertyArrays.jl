@@ -36,14 +36,25 @@ end
     atan(p.y, p.x) |> rad2deg
 end
 
+@register TestParticle :t p -> p.x + p.y
+
+@register(TestParticle, :radius_sq) do p
+    p.x^2 + p.y^2
+end
+
 @testset "PObject attributes" begin
     p = TestParticle(3.0, 4.0)
 
     @test p.x == 3.0
     @test p.radius == 5.0
     @test p.angle ≈ 53.13010235415598
+    @test p.t == 7.0
+    @test p.radius_sq == 25.0
+    @test !isdefined(@__MODULE__, :t)
+    @test !isdefined(@__MODULE__, :radius_sq)
     @test hasproperty(p, :x)
     @test hasproperty(p, :radius)
+    @test hasproperty(p, :t)
     @test !hasproperty(p, :missing)
     @test_throws ErrorException p.missing
 end

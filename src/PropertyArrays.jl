@@ -109,10 +109,15 @@ register(f, T::Type) = register(f, T, Symbol(f))
 """
     @register function f(x::T) ... end
     @register f(x::T) = ...
+    @register T :name x -> ...
 
 Define a function and register it as an attribute of `T` (which must be
 a [`PropertyObject`](@ref) subtype). Equivalent in effect to writing the
 function definition followed by `register(f, T, :f)`.
+
+The anonymous attribute form registers a property without defining a public
+function with the same name. Use it when the property name is short or likely
+to conflict with local variables or other functions.
 
 Unlike [`register`](@ref), this macro emits the registration as an
 ordinary top-level method definition, so it is **safe to use inside a
@@ -129,9 +134,37 @@ of each definition.
 end
 
 @register radius(p::Particle) = sqrt(p.x^2 + p.y^2)
+
+@register Particle :t p -> p.x + p.y
+
+@register(Particle, :radius_sq) do p
+    p.x^2 + p.y^2
+end
 ```
 """
-macro register(funcdef)
+function _register_attr_symbol(attr)
+    if attr isa QuoteNode && attr.value isa Symbol
+        return attr.value
+    elseif attr isa Symbol
+        return attr
+    else
+        error("@register: attribute name must be a Symbol, e.g. `:t`")
+    end
+end
+
+function _register_arrow_arg(arg)
+    if arg isa Symbol
+        return arg
+    elseif arg isa Expr && arg.head === :tuple && length(arg.args) == 1 && arg.args[1] isa Symbol
+        return arg.args[1]
+    elseif arg isa Expr && arg.head === :(::) && length(arg.args) >= 1 && arg.args[1] isa Symbol
+        return arg.args[1]
+    else
+        error("@register: anonymous attribute function must take exactly one plain argument")
+    end
+end
+
+function _register_named(funcdef)
     # Accept both `function f(...) ... end` (head :function) and
     # short form `f(...) = ...` (head :(=)).
     if !(funcdef isa Expr) || !(funcdef.head === :function || funcdef.head === :(=))
@@ -159,6 +192,33 @@ macro register(funcdef)
         function $(GlobalRef(@__MODULE__, :_attr))(::Val{$(QuoteNode(fname))}, x::$(esc(Tname)))
             $(esc(fname))(x)
         end
+    end
+end
+
+function _register_anonymous(Tname, attr, fnexpr)
+    if !(fnexpr isa Expr && fnexpr.head === :->)
+        error("@register: anonymous attribute form expects `T :name x -> body`")
+    end
+    s = _register_attr_symbol(attr)
+    arg = _register_arrow_arg(fnexpr.args[1])
+    body = fnexpr.args[2]
+    return quote
+        function $(GlobalRef(@__MODULE__, :_attr))(::Val{$(QuoteNode(s))}, $(esc(arg))::$(esc(Tname)))
+            $(esc(body))
+        end
+    end
+end
+
+macro register(args...)
+    if length(args) == 1
+        return _register_named(args[1])
+    elseif length(args) == 3 && args[1] isa Expr && args[1].head === :->
+        # Supports `@register(T, :name) do x ... end`.
+        return _register_anonymous(args[2], args[3], args[1])
+    elseif length(args) == 3
+        return _register_anonymous(args[1], args[2], args[3])
+    else
+        error("@register expects a function definition or `@register T :name x -> body`")
     end
 end
 

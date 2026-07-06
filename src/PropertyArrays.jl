@@ -86,6 +86,14 @@ runs during precompilation and may overwrite methods, breaking the
 precompile cache. For package code, use the [`@register`](@ref) macro,
 which emits the method definition as ordinary top-level code.
 
+Use `register` when the type, attribute name, or callable is chosen at
+runtime. For static package code, prefer [`@register`](@ref); for an existing
+named function in package code, prefer [`@register_fn`](@ref).
+
+`register` is a trusted-code extension hook: it does not evaluate strings, but
+it mutates the global method table and should not be exposed to untrusted input
+or plugin code.
+
 # Examples (interactive use)
 ```julia
 # Plain function reference
@@ -119,6 +127,11 @@ The anonymous attribute form registers a property without defining a public
 function with the same name. Use it when the property name is short or likely
 to conflict with local variables or other functions.
 
+Use `@register` for static package code when defining the calculation and
+registration together, or when registering an anonymous property body. Use
+[`@register_fn`](@ref) instead when the named function is defined separately.
+Use [`register`](@ref) only when registration must depend on runtime values.
+
 Unlike [`register`](@ref), this macro emits the registration as an
 ordinary top-level method definition, so it is **safe to use inside a
 package module**. Precompilation handles it like any other method.
@@ -145,10 +158,8 @@ end
 function _register_attr_symbol(attr)
     if attr isa QuoteNode && attr.value isa Symbol
         return attr.value
-    elseif attr isa Symbol
-        return attr
     else
-        error("@register: attribute name must be a Symbol, e.g. `:t`")
+        error("@register: attribute name must be a quoted Symbol, e.g. `:t`; use `register` for runtime names")
     end
 end
 
@@ -157,10 +168,17 @@ function _register_arrow_arg(arg)
         return arg
     elseif arg isa Expr && arg.head === :tuple && length(arg.args) == 1 && arg.args[1] isa Symbol
         return arg.args[1]
-    elseif arg isa Expr && arg.head === :(::) && length(arg.args) >= 1 && arg.args[1] isa Symbol
-        return arg.args[1]
     else
-        error("@register: anonymous attribute function must take exactly one plain argument")
+        error("@register: anonymous attribute function must take exactly one plain, untyped argument")
+    end
+end
+
+function _register_attr_method(s::Symbol, Tname, arg::Symbol, body; escape_body::Bool = true)
+    body_expr = escape_body ? esc(body) : body
+    return quote
+        function $(GlobalRef(@__MODULE__, :_attr))(::Val{$(QuoteNode(s))}, $(esc(arg))::$(esc(Tname)))
+            $body_expr
+        end
     end
 end
 
@@ -187,11 +205,10 @@ function _register_named(funcdef)
     #   2. A method on PropertyArrays._attr that dispatches to it.
     # This avoids @eval entirely, so precompilation handles both like any
     # other ordinary method definition.
+    attrdef = _register_attr_method(fname, Tname, :x, :($(esc(fname))(x)); escape_body = false)
     return quote
         $(esc(funcdef))
-        function $(GlobalRef(@__MODULE__, :_attr))(::Val{$(QuoteNode(fname))}, x::$(esc(Tname)))
-            $(esc(fname))(x)
-        end
+        $attrdef
     end
 end
 
@@ -202,11 +219,7 @@ function _register_anonymous(Tname, attr, fnexpr)
     s = _register_attr_symbol(attr)
     arg = _register_arrow_arg(fnexpr.args[1])
     body = fnexpr.args[2]
-    return quote
-        function $(GlobalRef(@__MODULE__, :_attr))(::Val{$(QuoteNode(s))}, $(esc(arg))::$(esc(Tname)))
-            $(esc(body))
-        end
-    end
+    return _register_attr_method(s, Tname, arg, body)
 end
 
 macro register(args...)
@@ -232,6 +245,9 @@ registration, `x.f` on any `x::T` returns `f(x)`.
 Unlike [`register`](@ref), this macro emits a plain method definition so it
 is **safe to use inside a package module**. Use it when `f` is defined
 separately — typically when extending a function imported from another module.
+Use [`@register`](@ref) instead when defining and registering the function in
+one place, or when registering an anonymous property body. Use [`register`](@ref)
+only when registration must depend on runtime values.
 
 # Example
 ```julia
@@ -245,11 +261,7 @@ See [`@register`](@ref) for the combined define-and-register form.
 """
 macro register_fn(fname, Tname)
     fname isa Symbol || error("@register_fn: first argument must be a plain function name")
-    return quote
-        function $(GlobalRef(@__MODULE__, :_attr))(::Val{$(QuoteNode(fname))}, x::$(esc(Tname)))
-            $(esc(fname))(x)
-        end
-    end
+    return _register_attr_method(fname, Tname, :x, :($(esc(fname))(x)); escape_body = false)
 end
 
 # ============================================================================

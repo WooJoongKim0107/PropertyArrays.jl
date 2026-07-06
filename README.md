@@ -137,6 +137,21 @@ end
 `PObject` is an alias for `PropertyObject`. Any struct that inherits from it can
 have functions registered as accessible attributes.
 
+### Choosing an API
+
+| Use case | API |
+| --- | --- |
+| Define a named function and register it in package code | `@register f(x::T) = ...` |
+| Register a property without defining a function of the same name | `@register T :name x -> ...` |
+| Register an existing named function in package code | `@register_fn f T` |
+| Register from runtime values in trusted REPL/script/notebook code | `register(f, T, name)` |
+
+Use the macro forms for static package code because they emit ordinary method
+definitions and are precompile-safe. Use `register` only when the type,
+attribute name, or function is genuinely chosen at runtime. `register` does not
+evaluate strings, but it mutates the global method table and should not be
+exposed to untrusted input or plugin code.
+
 ### In Package Code
 
 Use `@register`. It emits ordinary top-level method definitions, so

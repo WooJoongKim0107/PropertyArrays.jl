@@ -57,6 +57,8 @@ end
     @test hasproperty(p, :t)
     @test !hasproperty(p, :missing)
     @test_throws ErrorException p.missing
+    @test_throws ErrorException macroexpand(@__MODULE__, :(@register TestParticle t p -> p.x))
+    @test_throws ErrorException macroexpand(@__MODULE__, :(@register TestParticle :typed_arg p::TestParticle -> p.x))
 end
 
 @testset "Dynamic registration" begin

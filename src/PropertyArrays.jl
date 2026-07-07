@@ -1,5 +1,5 @@
 module PropertyArrays
-export PropertyObject, PObject, register, @register, @register_fn, @delegate, PropertyArray, PArray, translate, psave, pload
+export PropertyObject, PObject, register, @register, @register_fn, @delegate, @pcalc, PropertyArray, PArray, translate, psave, pload
 
 using JLD2: save_object, load_object
 
@@ -113,6 +113,77 @@ function register(f, T::Type, s::Symbol)
 end
 
 register(f, T::Type) = register(f, T, Symbol(f))
+
+function _pcalc_apply(f, x)
+    return f(x)
+end
+
+function _pcalc_apply(f, A::AbstractArray)
+    return map(f, A)
+end
+
+function _pcalc_call_head(head)
+    if head isa Symbol
+        return esc(head)
+    elseif head isa Expr && head.head === :$
+        length(head.args) == 1 || error("@pcalc: invalid interpolation")
+        return esc(head.args[1])
+    else
+        return head
+    end
+end
+
+function _pcalc_rewrite(ex, arg::Symbol)
+    if ex isa Symbol
+        return :($(GlobalRef(Base, :getproperty))($arg, $(QuoteNode(ex))))
+    elseif ex isa QuoteNode || !(ex isa Expr)
+        return ex
+    elseif ex.head === :$
+        length(ex.args) == 1 || error("@pcalc: invalid interpolation")
+        return esc(ex.args[1])
+    elseif ex.head === :quote
+        return ex
+    elseif ex.head === :call
+        return Expr(:call, _pcalc_call_head(ex.args[1]), (_pcalc_rewrite(a, arg) for a in ex.args[2:end])...)
+    elseif ex.head === :.
+        return Expr(:., _pcalc_rewrite(ex.args[1], arg), ex.args[2:end]...)
+    else
+        return Expr(ex.head, (_pcalc_rewrite(a, arg) for a in ex.args)...)
+    end
+end
+
+"""
+    @pcalc target expression
+    @pcalc(target, expression)
+
+Evaluate an ad hoc property formula on `target`.
+
+Bare identifiers in `expression` are read as properties of each target
+element. Use `\$name` or `\$(expr)` to interpolate caller-scope Julia values
+instead of treating them as properties.
+
+For an array or `PArray`, the formula is evaluated element-wise with `map`.
+For a scalar object, the scalar result is returned.
+
+# Examples
+```julia
+@pcalc particles x + y
+@pcalc particles sqrt(x^2 + y^2)
+
+offset = 10
+@pcalc particles x + \$offset
+```
+"""
+macro pcalc(target, ex)
+    arg = gensym(:pcalc)
+    return :($(GlobalRef(@__MODULE__, :_pcalc_apply))($(esc(target))) do $arg
+        $(_pcalc_rewrite(ex, arg))
+    end)
+end
+
+macro pcalc(args...)
+    error("@pcalc expects `@pcalc target expression` or `@pcalc(target, expression)`")
+end
 
 """
     @register function f(x::T) ... end

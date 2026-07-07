@@ -160,6 +160,25 @@ end
     @test selected.radius.data == [sqrt(17), sqrt(20), sqrt(26), sqrt(29)]
 end
 
+@testset "@pcalc formulas" begin
+    p = TestParticle(3.0, 4.0)
+    particles = PArray([TestParticle(i, j) for i in 1.0:2.0, j in 3.0:5.0])
+
+    @test @pcalc(p, x + y) == 7.0
+    @test (@pcalc particles x + y).data == particles.x.data .+ particles.y.data
+    @test (@pcalc particles radius^2).data ≈ particles.radius.data .^ 2
+    @test (@pcalc particles sqrt(x^2 + y^2)).data ≈ particles.radius.data
+
+    double_value(v) = 2v
+    @test (@pcalc particles double_value(x)).data == particles.x.data .* 2
+
+    offset = 10.0
+    scale = 2.0
+    @test (@pcalc particles x + $offset).data == particles.x.data .+ 10.0
+    @test (@pcalc particles x * $scale).data == particles.x.data .* 2.0
+    @test (@pcalc particles x + $(offset / scale)).data == particles.x.data .+ 5.0
+end
+
 @testset "PArray conversion" begin
     matrix = [1 2; 3 4]
     wrapped_matrix = PArray(matrix)

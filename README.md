@@ -145,6 +145,7 @@ have functions registered as accessible attributes.
 | Register a property without defining a function of the same name | `@register T :name x -> ...` |
 | Register an existing named function in package code | `@register_fn f T` |
 | Delegate properties from a composed field in package code | `@delegate T field (:a, :b)` |
+| Evaluate a temporary REPL/test formula without registering it | `@pcalc xs A1 + B1` |
 | Register from runtime values in trusted REPL/script/notebook code | `register(f, T, name)` |
 
 Use the macro forms for static package code because they emit ordinary method
@@ -210,6 +211,37 @@ true
 > with precompilation. Use `@register` inside package code; use `register`
 > for interactive work or for cases where the registration is genuinely
 > dynamic.
+
+### Ad Hoc REPL Formulas
+
+Use `@pcalc` for temporary calculations that are useful at the REPL or in
+tests but not worth registering as attributes:
+
+```julia
+@pcalc particles x + y
+@pcalc particles sqrt(x^2 + y^2)
+@pcalc particles radius^2
+```
+
+Bare names in the formula are read as properties of each element. For an
+array or `PArray`, the formula is evaluated element-wise and returns the
+usual mapped result. For a single object, it returns a scalar:
+
+```julia
+@pcalc p x + y
+```
+
+Use `$` when a name should come from the caller's scope instead of from the
+object's properties:
+
+```julia
+offset = 10
+scale = 2
+
+@pcalc particles x + $offset
+@pcalc particles radius / $scale
+@pcalc particles x + $(offset / scale)
+```
 
 ### Delegating Composed Properties
 
@@ -354,12 +386,13 @@ p  = translate(nt, Point)           # Point(1.0, 2.0)
 | `@register`      | macro       | define and register in one step        |
 | `@register_fn`   | macro       | register an already-defined function   |
 | `@delegate`      | macro       | delegate attributes from composed fields |
+| `@pcalc`         | macro       | evaluate temporary property formulas   |
 | `psave`          | function    | JLD2 serialization                     |
 | `pload`          | function    | JLD2 deserialization                   |
 | `translate`      | function    | struct <-> NamedTuple conversion       |
 
 All exported names also have inline docstrings; use `?PArray`, `?PObject`,
-`?register`, etc. at the REPL for details.
+`?register`, `?@pcalc`, etc. at the REPL for details.
 
 ---
 
